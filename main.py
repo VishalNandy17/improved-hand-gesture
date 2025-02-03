@@ -9,7 +9,6 @@ import os
 
 class HandGestureCalculator:
     def __init__(self):
-        # Initialize MediaPipe
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
@@ -18,16 +17,12 @@ class HandGestureCalculator:
             min_tracking_confidence=0.7
         )
         self.mp_drawing = mp.solutions.drawing_utils
-
-        # Initialize calculation variables
         self.expression = []
         self.gesture_history = deque(maxlen=10)
         self.last_gesture = None
         self.current_number = ""
         self.last_number_time = 0
         self.last_number_gesture = None
-
-        # Initialize display settings
         self.window_name = 'Hand Gesture Calculator'
         self.theme = {
             'background': (40, 44, 52),
@@ -37,11 +32,7 @@ class HandGestureCalculator:
             'error': (224, 108, 117),
             'highlight': (229, 192, 123)
         }
-
-        # Initialize logging
         self.setup_logging()
-
-        # Tutorial mode state
         self.tutorial_mode = True
         self.tutorial_step = 0
         self.tutorial_steps = [
@@ -55,16 +46,12 @@ class HandGestureCalculator:
             "Hold any number for 5 seconds to repeat it",
             "Tutorial complete! Press 'T' to toggle tutorial mode"
         ]
-
-        # Performance metrics
         self.fps_history = deque(maxlen=30)
         self.last_frame_time = time.time()
         self.gesture_accuracy = {}
-
-        # Visual feedback messages
         self.feedback_messages = deque(maxlen=3)
         self.message_timers = deque(maxlen=3)
-        self.MESSAGE_DURATION = 2.0  # seconds
+        self.MESSAGE_DURATION = 2.0
 
     def setup_logging(self):
         self.log_file = f"calculator_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -92,15 +79,13 @@ class HandGestureCalculator:
     def get_finger_state(self, hand_landmarks):
         finger_tips = [4, 8, 12, 16, 20]
         finger_state = [0, 0, 0, 0, 0]
-
         for i, tip in enumerate(finger_tips):
-            if i == 0:  # Thumb
+            if i == 0:
                 if hand_landmarks.landmark[tip].x < hand_landmarks.landmark[tip - 1].x:
                     finger_state[i] = 1
             else:
                 if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y:
                     finger_state[i] = 1
-
         return finger_state
 
     def get_finger_angles(self, hand_landmarks):
@@ -108,56 +93,43 @@ class HandGestureCalculator:
         finger_bases = [1, 5, 9, 13, 17]
         finger_tips = [4, 8, 12, 16, 20]
         angles = []
-
         for base, tip in zip(finger_bases, finger_tips):
             base_point = hand_landmarks.landmark[base]
             tip_point = hand_landmarks.landmark[tip]
-            
             angle = math.degrees(math.atan2(tip_point.y - wrist.y, tip_point.x - wrist.x) - 
                                math.atan2(base_point.y - wrist.y, base_point.x - wrist.x))
             angle = (angle + 360) % 360
             angles.append(angle)
-
         return angles
 
     def interpret_gesture(self, finger_state, finger_angles):
         gestures = {
-            # Numbers
-            tuple([0, 0, 0, 0, 0]): (0, 0.9),  # Fist
-            tuple([0, 1, 0, 0, 0]): (1, 0.9),  # Index finger
-            tuple([0, 1, 1, 0, 0]): (2, 0.85),  # Peace sign
-            tuple([0, 1, 1, 1, 0]): (3, 0.8),  # Three fingers
-            tuple([0, 1, 1, 1, 1]): (4, 0.8),  # Four fingers
-            tuple([1, 1, 1, 1, 1]): (5, 0.9),  # Open hand
-            
-            # Operators with angle conditions
-            tuple([1, 0, 0, 0, 0]): ('+', 0.85),  # Thumb only
-            tuple([0, 0, 0, 0, 1]): ('-', 0.85),  # Pinky only
-            tuple([1, 1, 0, 0, 1]): ('*', 0.8),  # Thumb, index, pinky
-            tuple([1, 0, 0, 0, 1]): ('/', 0.8),  # Thumb and pinky
-            tuple([0, 1, 0, 1, 0]): ('=', 0.85),  # Index and ring
-            tuple([0, 1, 0, 1, 1]): ('C', 0.85),  # Index, ring, pinky
+            tuple([0, 0, 0, 0, 0]): (0, 0.9),
+            tuple([0, 1, 0, 0, 0]): (1, 0.9),
+            tuple([0, 1, 1, 0, 0]): (2, 0.85),
+            tuple([0, 1, 1, 1, 0]): (3, 0.8),
+            tuple([0, 1, 1, 1, 1]): (4, 0.8),
+            tuple([1, 1, 1, 1, 1]): (5, 0.9),
+            tuple([1, 0, 0, 0, 0]): ('+', 0.85),
+            tuple([0, 0, 0, 0, 1]): ('-', 0.85),
+            tuple([1, 1, 0, 0, 1]): ('*', 0.8),
+            tuple([1, 0, 0, 0, 1]): ('/', 0.8),
+            tuple([0, 1, 0, 1, 0]): ('=', 0.85),
+            tuple([0, 1, 0, 1, 1]): ('C', 0.85),
+            tuple([1, 0, 1, 0, 0]): (6, 0.8),
+            tuple([1, 0, 1, 1, 0]): (7, 0.8),
+            tuple([1, 0, 1, 1, 1]): (8, 0.8),
+            tuple([1, 1, 0, 1, 0]): (9, 0.8),
         }
-
         finger_tuple = tuple(finger_state)
         if finger_tuple in gestures:
             gesture, confidence = gestures[finger_tuple]
-            
-            # Additional angle-based validation
             if gesture == '/' and finger_angles[0] >= 90:
                 return None
-            if gesture in [6, 7] and finger_angles[0] >= 45:
-                return None
-            if gesture in [8, 9] and finger_angles[0] <= 90:
-                return None
-
-            # Update gesture accuracy statistics
             if gesture not in self.gesture_accuracy:
                 self.gesture_accuracy[gesture] = deque(maxlen=100)
             self.gesture_accuracy[gesture].append(confidence)
-            
             return gesture
-            
         return None
 
     def get_stable_gesture(self, gesture):
@@ -171,7 +143,6 @@ class HandGestureCalculator:
         h, w, _ = image.shape
         gesture_area = np.zeros((200, 200, 3), dtype=np.uint8)
         gesture_area[:] = self.theme['background']
-        
         if isinstance(gesture, int):
             cv2.putText(gesture_area, str(gesture), (50, 150), 
                        cv2.FONT_HERSHEY_SIMPLEX, 5, self.theme['accent'], 5)
@@ -184,8 +155,6 @@ class HandGestureCalculator:
         elif gesture == '=':
             cv2.putText(gesture_area, "=", (50, 150), 
                        cv2.FONT_HERSHEY_SIMPLEX, 5, self.theme['success'], 5)
-        
-        # Add gesture area with alpha blending
         alpha = 0.9
         roi = image[h-220:h-20, w-220:w-20]
         image[h-220:h-20, w-220:w-20] = cv2.addWeighted(roi, 1-alpha, gesture_area, alpha, 0)
@@ -207,7 +176,6 @@ class HandGestureCalculator:
             text_color = self.theme['text']
         if bg_color is None:
             bg_color = self.theme['background']
-
         (text_width, text_height), _ = cv2.getTextSize(
             text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
         text_offset_x, text_offset_y = position
@@ -216,27 +184,20 @@ class HandGestureCalculator:
             (text_offset_x - padding, text_offset_y + padding),
             (text_offset_x + text_width + padding, text_offset_y - text_height - padding)
         )
-        
         overlay = image.copy()
         cv2.rectangle(overlay, box_coords[0], box_coords[1], bg_color, cv2.FILLED)
         image = cv2.addWeighted(overlay, 0.7, image, 0.3, 0)
-        
         cv2.putText(image, text, position, cv2.FONT_HERSHEY_SIMPLEX, 
                    font_scale, text_color, thickness)
         return image
 
     def draw_interface(self, image):
-        # Calculate FPS
         current_time = time.time()
         fps = 1 / (current_time - self.last_frame_time)
         self.fps_history.append(fps)
         avg_fps = sum(self.fps_history) / len(self.fps_history)
         self.last_frame_time = current_time
-
-        # Update feedback messages
         self.update_feedback_messages()
-
-        # Draw title and FPS
         image = self.draw_result(
             image, 
             f"Hand Gesture Calculator (FPS: {avg_fps:.1f})", 
@@ -245,8 +206,6 @@ class HandGestureCalculator:
             2, 
             self.theme['accent']
         )
-
-        # Draw feedback messages
         y_offset = 160
         for msg, color in self.feedback_messages:
             image = self.draw_result(
@@ -258,8 +217,6 @@ class HandGestureCalculator:
                 color
             )
             y_offset += 30
-
-        # Draw tutorial if enabled
         if self.tutorial_mode:
             image = self.draw_result(
                 image,
@@ -269,8 +226,6 @@ class HandGestureCalculator:
                 2,
                 self.theme['highlight']
             )
-
-        # Draw gesture guide
         if not self.tutorial_mode:
             instructions = [
                 "0-9: Show fingers",
@@ -289,7 +244,6 @@ class HandGestureCalculator:
                     1,
                     self.theme['text']
                 )
-
         return image
 
     def handle_keyboard_input(self, key):
@@ -305,21 +259,16 @@ class HandGestureCalculator:
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
         while cap.isOpened():
             success, image = cap.read()
             if not success:
                 continue
-
             image = cv2.flip(image, 1)
             rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             results = self.hands.process(rgb_image)
-
             image = self.draw_interface(image)
-
             if results.multi_hand_landmarks:
                 for hand_landmarks in results.multi_hand_landmarks:
                     self.mp_drawing.draw_landmarks(
@@ -327,18 +276,14 @@ class HandGestureCalculator:
                         self.mp_drawing.DrawingSpec(color=self.theme['accent'], thickness=2),
                         self.mp_drawing.DrawingSpec(color=self.theme['text'], thickness=1)
                     )
-                    
                     finger_state = self.get_finger_state(hand_landmarks)
                     finger_angles = self.get_finger_angles(hand_landmarks)
                     gesture = self.interpret_gesture(finger_state, finger_angles)
                     stable_gesture = self.get_stable_gesture(gesture)
-                    
                     current_time = time.time()
-                    
                     if stable_gesture is not None:
-                        if isinstance(stable_gesture, int):  # If it's a number gesture
+                        if isinstance(stable_gesture, int):
                             if stable_gesture == self.last_number_gesture:
-                                # Check if the same number has been held for 5 seconds
                                 if current_time - self.last_number_time >= 5:
                                     self.current_number += str(stable_gesture)
                                     self.last_number_time = current_time
@@ -347,7 +292,6 @@ class HandGestureCalculator:
                                         self.theme['accent']
                                     )
                             else:
-                                # New number gesture
                                 self.last_number_gesture = stable_gesture
                                 self.last_number_time = current_time
                                 if stable_gesture != self.last_gesture:
@@ -356,7 +300,7 @@ class HandGestureCalculator:
                                         f"Number input: {stable_gesture}",
                                         self.theme['accent']
                                     )
-                        else:  # If it's an operator
+                        else:
                             self.last_number_gesture = None
                             if stable_gesture != self.last_gesture:
                                 self.last_gesture = stable_gesture
@@ -392,11 +336,8 @@ class HandGestureCalculator:
                                         f"Operator: {stable_gesture}",
                                         self.theme['highlight']
                                     )
-                        
-                    if gesture is not None:
-                        image = self.draw_gesture(image, gesture)
-
-            # Display expression and result
+                        if gesture is not None:
+                            image = self.draw_gesture(image, gesture)
             display_text = ''.join(map(str, self.expression)) + self.current_number
             image = self.draw_result(
                 image, 
@@ -406,7 +347,6 @@ class HandGestureCalculator:
                 2, 
                 self.theme['text']
             )
-            
             if len(self.expression) > 0 and isinstance(self.expression[-1], str) and self.expression[-1] == '=':
                 result = self.evaluate_expression(''.join(map(str, self.expression[:-1])))
                 result_text = f"Result: {result}"
@@ -419,8 +359,6 @@ class HandGestureCalculator:
                     self.theme['success'] if result != "Error" else self.theme['error'],
                     (0, 0, 128)
                 )
-
-            # Display gesture recognition accuracy
             if self.gesture_accuracy:
                 accuracy_text = "Gesture Recognition Accuracy:"
                 image = self.draw_result(
@@ -431,7 +369,6 @@ class HandGestureCalculator:
                     2,
                     self.theme['accent']
                 )
-                
                 y_offset = 60
                 for gesture, accuracies in self.gesture_accuracy.items():
                     if accuracies:
@@ -446,21 +383,14 @@ class HandGestureCalculator:
                             self.theme['text']
                         )
                         y_offset += 20
-
-            # Handle keyboard input
             key = cv2.waitKey(5) & 0xFF
-            if key == 27:  # ESC to exit
+            if key == 27:
                 break
             self.handle_keyboard_input(key)
-
-            # Show the image
             cv2.imshow(self.window_name, image)
-
-        # Cleanup
         self.log_action("Session ended", "Application closed")
         cap.release()
         cv2.destroyAllWindows()
-
 
 def main():
     try:
